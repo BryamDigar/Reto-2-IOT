@@ -1,5 +1,5 @@
-const char* SSID = "BRYAM1060";
-const char* PASSWORD = "ESP32321";
+const char* SSID = "SSID";
+const char* PASSWORD = "PASSWORD";
 const int HTTP_PORT = 80;
 const char MAIN_page[] PROGMEM = R"=====(
 <!DOCTYPE html>
