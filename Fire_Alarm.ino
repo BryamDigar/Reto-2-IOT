@@ -8,6 +8,7 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 
+// Definición de pines y constantes
 #define DHTPIN 4
 #define DHTTYPE DHT11
 #define LED_PIN 27
@@ -37,12 +38,14 @@
 
 #define HISTORY_SIZE 60 // Guardar 60 lecturas (5 minutos con lecturas cada 5 segundos)
 
+// Inicialización del servidor web
 WebServer server(HTTP_PORT);
 
 DHT dht(DHTPIN, DHTTYPE);
 LiquidCrystal_I2C lcd(I2C_ADDR, LCD_COLUMNS, LCD_LINES);
 MQUnifiedsensor MQ2(Board, Voltage_Resolution, ADC_Bit_Resolution, Pin, Type);
 
+// Variables para almacenar lecturas de sensores
 const int numReadings = 10;
 float tempReadings[numReadings] = {0};
 float humiReadings[numReadings] = {0};
@@ -52,7 +55,7 @@ int index_gas = 0;
 volatile bool alarmTriggered = false;
 volatile bool dataReady = false;
 
-// Variables para histórico
+// Variables para histórico de datos
 float tempHistory[HISTORY_SIZE] = {0};
 float humiHistory[HISTORY_SIZE] = {0};
 int coHistory[HISTORY_SIZE] = {0};
@@ -82,6 +85,7 @@ void IRAM_ATTR triggerAlarm() {
     alarmTriggered = true;
 }
 
+// Tarea para leer los sensores periódicamente
 void readSensorsTask(void *pvParameters) {
   while (true) {
     sensorData.temp = dht.readTemperature();
@@ -94,10 +98,12 @@ void readSensorsTask(void *pvParameters) {
   }
 }
 
+// Manejar la solicitud raíz del servidor web
 void handleRoot() {
   server.send_P(200, "text/html", MAIN_page);
 }
 
+// Manejar las solicitudes de datos del servidor web
 void handleData() {
   String status = "Monitoreo OK";
   if (sensorData.temp > TEMP_HIGH) status = "Temp alta";
@@ -146,6 +152,7 @@ void handleNotifications() {
   server.send(200, "application/json", json);
 }
 
+// Manejar la solicitud para desactivar la alarma
 void handleDisableAlarm() {
   alarmTriggered = false;
   alarmActive = false;
@@ -155,6 +162,7 @@ void handleDisableAlarm() {
   server.send(200, "text/plain", "Alarma desactivada");
 }
 
+// Agregar una notificación al historial
 void addNotification(String message) {
   for (int i = 4; i > 0; i--) notifications[i] = notifications[i-1];
   unsigned long currentTime = millis();
@@ -163,6 +171,7 @@ void addNotification(String message) {
   if (notificationCount < 5) notificationCount++;
 }
 
+// Agregar datos al historial
 void addToHistory(float temp, float humi, int co, String status) {
   tempHistory[historyIndex] = temp;
   humiHistory[historyIndex] = humi;
@@ -173,11 +182,12 @@ void addToHistory(float temp, float humi, int co, String status) {
 }
 
 void setRGB(int red, int green, int blue) {
-  analogWrite(RED_PIN, red);
-  analogWrite(GREEN_PIN, green);
-  analogWrite(BLUE_PIN, blue);
+  analogWrite(RED_PIN, 255 - red);
+  analogWrite(GREEN_PIN, 255 - green);
+  analogWrite(BLUE_PIN, 255 - blue);
 }
 
+// Configuración inicial del sistema
 void setup() {
   Serial.begin(115200);
   
@@ -216,7 +226,7 @@ void setup() {
   lcd.createChar(0, Alert0);
   lcd.createChar(1, Alert1);
 
-  
+  // Conexión a WiFi
   Serial.println("Conectando a WiFi...");
   lcd.setCursor(0, 0);
   lcd.print("Conectando a");
@@ -246,6 +256,7 @@ void setup() {
     while (true) delay(1000);
   }
 
+  // Configuración de rutas del servidor web
   server.on("/", handleRoot);
   server.on("/data", handleData);
   server.on("/history", handleHistory);
@@ -254,15 +265,18 @@ void setup() {
   server.begin();
   Serial.println("Servidor web iniciado.");
 
+  // Crear tarea para leer sensores
   xTaskCreate(readSensorsTask, "ReadSensorsTask", 2048, NULL, 1, NULL);
 }
 
+// Bucle principal del programa
 void loop() {
   server.handleClient();
 
   if (dataReady) {
     dataReady = false;
 
+    // Mostrar datos en el LCD
     lcd.clear();
     lcd.setCursor(0, 0);
     lcd.print("Monitoreo OK");
@@ -289,6 +303,7 @@ void loop() {
     lcd.clear();
     Serial.println("Temp: " + String(sensorData.temp) + " Humi: " + String(sensorData.humi) + " CO: " + String(sensorData.co));
 
+    // Actualizar lecturas de sensores
     tempReadings[index_gas] = sensorData.temp;
     humiReadings[index_gas] = sensorData.humi;
     coReadings[index_gas] = sensorData.co;
@@ -298,6 +313,7 @@ void loop() {
     float humiDiff = humiReadings[index_gas] - humiReadings[(index_gas + 1) % numReadings];
     int coDiff = coReadings[index_gas] - coReadings[(index_gas + 1) % numReadings];
 
+    // Detectar condiciones de alarma
     bool fireDetected = digitalRead(FLAME_PIN) == FIRE_THRESHOLD;
     bool highTemp = sensorData.temp > TEMP_HIGH;
     bool lowTemp = sensorData.temp < TEMP_LOW;
@@ -352,10 +368,12 @@ void loop() {
       digitalWrite(LED_PIN, LOW);
     }
 
+    // Activar alarma si se detectan condiciones de incendio
     if (fireDetected || (highTemp && lowHumi) || (rapidChange && highCO)) {
       triggerAlarm();
     }
 
+    // Manejar la activación de la alarma
     if (alarmTriggered && !alarmActive) {
       alarmActive = true;
       addNotification("¡ALARMA DE INCENDIO ACTIVADA!");
@@ -372,6 +390,7 @@ void loop() {
       status = "ALERTA INCENDIO!";
     }
 
+    // Actualizar el historial de datos
     if (millis() - lastHistoryUpdate >= historyInterval) {
       addToHistory(sensorData.temp, sensorData.humi, sensorData.co, status);
       lastHistoryUpdate = millis();
